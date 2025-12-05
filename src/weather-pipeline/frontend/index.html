@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Weather Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            overflow-x: auto;
+        }
+
+        form {
+            margin-bottom: 20px;
+        }
+
+        label {
+            margin-right: 10px;
+        }
+
+        input[type="text"] {
+            padding: 5px;
+            margin-right: 10px;
+        }
+
+        input[type="submit"], button {
+            padding: 5px 10px;
+            cursor: pointer;
+            width: 100%;
+            background: #23aa9f;
+            border-radius: 5px;
+            border: none;
+            color: white;
+            font-size: 16px;
+        }
+
+        .flex-container {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .flex-container.main-content {
+            width: 100%;
+            box-sizing: border-box;
+            gap: 40px;
+            justify-content: stretch;
+            align-items: stretch;
+            overflow-x: auto;
+            max-width: 100%;
+            padding: 5px;
+        }
+
+        #queue-container, #fetched-values-container {
+            flex: 1;
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        pre.list {
+            max-width: 100%;
+            box-sizing: border-box;
+            overflow-x: auto;
+        }
+
+        .how-it-works {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-self: flex-start;
+            height: 100%;
+            padding-top: 0;
+            margin-top: 0;
+        }
+
+        .how-it-works h2 {
+            margin-top: 0;
+            padding-top: 0;
+        }
+    </style>
+</head>
+<body>
+<h1>Weather Data</h1>
+
+<div class="flex-container main-content">
+    <div>
+        <form id="weather-form" class="flex-container">
+            <label for="city">City:</label>
+            <input type="text" id="city" name="city" placeholder="Dublin">
+            <input type="submit" value="Get Weather">
+        </form>
+        <button onclick="refreshData()">Refresh</button>
+    </div>
+
+    <div class="how-it-works">
+        <h2>
+            How It Works
+        </h2>
+        <p>
+            To trigger fetching weather data, enter a city name and click "Get Weather".
+            This will add the city to the Redis queue.
+            Once the worker processes the queue, the weather data will be stored in Postgres.
+            You can then click "Refresh" to load the latest data from Postgres.
+        </p>
+    </div>
+
+</div>
+
+<div class="flex-container main-content">
+    <div id="queue-container">
+        <h2>Redis Queue</h2>
+        <pre class="list" id="queue"></pre>
+    </div>
+
+    <div id="fetched-values-container">
+        <h2>Postgres Values</h2>
+        <pre class="list" id="output"></pre>
+    </div>
+</div>
+
+<script>
+    let fetchedValues = {};
+    let queue = [];
+
+    function updateQueueDisplay() {
+        if (queue.length === 0) {
+            document.getElementById("queue").innerText = "Queue is empty.";
+            return;
+        }
+        document.getElementById("queue").innerText = JSON.stringify(queue, null, 2);
+    }
+
+    function updateFetchedValuesDisplay() {
+        if (Object.keys(fetchedValues).length === 0) {
+            document.getElementById("output").innerText = "No values in Postgres.";
+            return;
+        }
+        document.getElementById("output").innerText = JSON.stringify(fetchedValues, null, 2);
+    }
+
+    function refreshData() {
+        fetch("http://localhost:8000/weather")
+            .then(res => res.json())
+            .then(data => {
+                fetchedValues = data;
+                updateFetchedValuesDisplay();
+            });
+
+        fetch("http://localhost:8000/queue")
+            .then(res => res.json())
+            .then(data => {
+                queue = data;
+                updateQueueDisplay();
+            });
+    }
+
+    window.onload = function () {
+        refreshData();
+    };
+
+    document.getElementById("weather-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        const city = document.getElementById("city").value;
+        fetch(`http://localhost:8000/weather/${city}`, {
+            method: "POST"
+        })
+            .then(res => {
+                if (res.ok) {
+                    return res.json();
+                }
+                return res.text().then(text => {
+                    throw new Error(text)
+                });
+            })
+            .then(data => {
+                fetchedValues = data;
+                // append to queue for display purposes
+                queue.push(data);
+                updateQueueDisplay();
+            })
+            .catch(error => {
+                document.getElementById("output").innerText = `Error: ${error.message}`;
+            });
+    });
+</script>
+</body>
+
+</html>

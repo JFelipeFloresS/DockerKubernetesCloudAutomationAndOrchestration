@@ -1,5 +1,8 @@
+import os
+
 from src.controller.docker_controller import DockerController, DockerContainerStatus
-from src.utils.list_utils import container_to_string
+from src.controller.weather_pipeline_controller import WeatherPipelineController
+from src.utils.list_utils import container_to_string, list_ordered_list
 from src.utils.user_input_handler import get_user_input
 from src.view.abstract_menu import AbstractMenu
 
@@ -18,7 +21,9 @@ class DockerMenu(AbstractMenu):
              9: "List Images",
              10: "Get Image History",
              11: "Remove Image",
-             12: "Main Menu",
+             12: "Run Python Program in Container (Docker Requirements 2)",
+             13: "Weather Pipeline (Docker Requirements 3)",
+             20: "Main Menu",
              99: "Exit"}
         super().__init__("Docker Menu", docker_menu_options)
         self.docker_controller = DockerController()
@@ -47,6 +52,10 @@ class DockerMenu(AbstractMenu):
         elif choice == 11:
             self.remove_image()
         elif choice == 12:
+            self.run_python_program()
+        elif choice == 13:
+            self.weather_pipeline()
+        elif choice == 20:
             return False
         elif choice == 99 or choice == 0:
             self.exit_application()
@@ -144,8 +153,18 @@ class DockerMenu(AbstractMenu):
         if not command:
             return
         try:
-            exit_code, output = self.docker_controller.run_command_in_container(container_id, command)
-            print(f"Command executed with exit code {exit_code}. Output:\n{output}")
+            result = self.docker_controller.run_command_in_container(container_id, command)
+            # Ensure result is always a tuple
+            if not isinstance(result, tuple):
+                exit_code, output = None, None
+            else:
+                exit_code, output = result
+            # Only print output if it is not None (i.e., not an interactive command)
+            if exit_code is not None or output is not None:
+                print(f"Command executed with exit code {exit_code}. Output:\n{output}")
+            else:
+                print(
+                    "Command prompt or terminal have been opened. Check the output there. This allows for interactive commands.")
         except Exception as e:
             print(f"Failed to run command in container: {e}")
 
@@ -236,3 +255,41 @@ class DockerMenu(AbstractMenu):
             print(f"Docker image '{image_id}' removed successfully.")
         except Exception as e:
             print(f"Failed to remove Docker image: {e}")
+
+    def run_python_program(self):
+        """
+        Run a Python program inside a Docker container.
+        :return: None
+        """
+        curr_path = os.path.dirname(os.path.realpath(__file__))
+        test_python_path = os.path.abspath(os.path.join(curr_path, '../assets/test.py'))
+        python_path = get_user_input("Enter the path to the Python program: ", default_value=test_python_path)
+        if not python_path:
+            return
+
+        python_versions = list_ordered_list(['2.7', '3.14'], "Available Python Versions:")
+
+        python_version = get_user_input("Enter the Python version", default_value=python_versions[1],
+                                        available_options=python_versions)
+        if not python_version:
+            return
+
+        image_name = get_user_input("Enter the name for the Docker image: ", default_value='python_program_image')
+        if not image_name:
+            return
+        try:
+            container = self.docker_controller.run_python_program(python_path, python_version, image_name)
+            print(f"Python program is running in container with ID: {container.id}")
+        except Exception as e:
+            print(f"Failed to run Python program in Docker container: {e}")
+
+    def weather_pipeline(self):
+        """
+        Run the weather data pipeline using Docker.
+        :return: None
+        """
+        try:
+            WeatherPipelineController(self.docker_controller)
+            print("Weather data pipeline executed successfully.")
+        except Exception as e:
+            print(f"Failed to run weather data pipeline: {e}")

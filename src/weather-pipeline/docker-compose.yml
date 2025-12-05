@@ -1,0 +1,67 @@
+services:
+  api:
+    build: ./api
+    container_name: weather_api
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - DB_NAME=weather
+
+  worker:
+    build: ./worker
+    container_name: weather_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - DB_NAME=weather
+
+  redis:
+    image: redis:6.2
+    container_name: weather_redis
+    command: [ "redis-server", "--loglevel", "verbose" ]
+
+  db:
+    image: postgres:15
+    container_name: weather_db
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: weather
+    command: [
+      "postgres",
+      "-c", "log_statement=all",
+      "-c", "log_duration=off",
+    ]
+    ports:
+      - "5433:5432" # Expose Postgres on host port 5433 (I've postgres already running on 5432)
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build: ./frontend
+    container_name: weather_frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+      - db
